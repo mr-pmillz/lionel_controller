@@ -1,149 +1,207 @@
-## This was an exercise in Github Copilot AI coding. The entire integration was created and coded by Copilot using prompts. 
-<strike>### This integration will be made public and archived, so that someone else may fork and expand on this</strike>
-Unarchived because I am a completionist.  
-
----
 # Lionel Train Controller
 
 A Home Assistant custom integration for controlling Lionel LionChief Bluetooth locomotives.
 
-## Features
+[![hacs][hacs-shield]][hacs-url]
 
-- **Throttle Control**: Use a number slider to control train speed (0-100%)
-- **Direction Control**: Switch between forward and reverse
-- **Sound Effects**: Control horn, bell, and announcements  
-- **Lighting**: Train lights control
-- **Volume Controls**: Individual volume control for horn, bell, speech, and engine sounds
-- **Connection Status**: Monitor Bluetooth connection status
-- **Auto-Discovery**: Automatically discover locomotives when powered on
-- **HACS Compatible**: Easy installation through HACS
+> **About this fork.** This is a fork of [iamjoshk/lionel_controller](https://github.com/iamjoshk/lionel_controller),
+> which was written as a GitHub Copilot exercise and archived. This fork fixes the
+> bugs that prevented the integration from installing and operating, and brings it
+> up to current Home Assistant API conventions. See [What this fork fixes](#what-this-fork-fixes).
 
-## Supported Controls
+## Requirements
 
-### Number Entities
-- **Throttle**: Variable speed control slider from 0-100%
-- **Master Volume**: Overall volume control (0-7)
-- **Horn Volume**: Horn sound volume (0-7)
-- **Bell Volume**: Bell sound volume (0-7)
-- **Speech Volume**: Announcement volume (0-7)
-- **Engine Volume**: Engine sound volume (0-7)
+- Home Assistant **2024.8.0** or newer (verified against 2026.8.3)
+- A working [Bluetooth integration](https://www.home-assistant.io/integrations/bluetooth/) —
+  either a local adapter or an [ESPHome Bluetooth proxy](https://esphome.io/components/bluetooth_proxy.html)
+- A Lionel LionChief Bluetooth locomotive
 
-### Switch Entities  
-- **Lights**: Control locomotive lighting (defaults to on)
-- **Horn**: Turn horn sound on/off
-- **Bell**: Turn bell sound on/off
-
-### Button Entities
-- **Stop**: Emergency stop button (sets throttle to 0)
-- **Forward**: Set locomotive direction to forward
-- **Reverse**: Set locomotive direction to reverse
-- **Disconnect**: Disconnect from locomotive
-- **Announcements**: Various conductor announcements
-  - Random, Ready to Roll, Hey There, Squeaky
-  - Water and Fire, Fastest Freight, Penna Flyer
-
-### Binary Sensor
-- **Connection**: Shows Bluetooth connection status
+The integration declares `bluetooth_adapters` as a dependency, so Home Assistant sets
+up its Bluetooth stack first and supplies a compatible `bleak`. Do not install `bleak`
+yourself — a mismatched version breaks Home Assistant's Bluetooth support.
 
 ## Installation
 
-### HACS (Recommended)
-1. Open HACS in Home Assistant
-2. Go to "Integrations"
-3. Click the three dots menu and select "Custom repositories"
-4. Add `https://github.com/iamjoshk/lionel_controller` as an Integration
-5. Install "Lionel Train Controller"
-6. Restart Home Assistant
+### HACS
 
-### Manual Installation
-1. Copy the `custom_components/lionel_controller` folder to your Home Assistant `custom_components` directory
-2. Restart Home Assistant
+1. In Home Assistant, open **HACS**.
+2. Click the three-dot menu and choose **Custom repositories**.
+3. Add `https://github.com/mr-pmillz/lionel_controller` with type **Integration**.
+4. Search for **Lionel Train Controller** and click **Download**.
+5. Restart Home Assistant.
 
-## Configuration
+### Manual
 
-### Auto-Discovery (Recommended)
-1. Power on your Lionel LionChief locomotive near your Home Assistant device
-2. The integration will automatically detect the train and show a notification
-3. Go to Settings → Devices & Services to see the discovered train
-4. Click "Configure" to add it to Home Assistant
+1. Copy `custom_components/lionel_controller` into your Home Assistant
+   `config/custom_components/` directory.
+2. Restart Home Assistant.
 
-### Manual Setup
-1. Go to Settings → Devices & Services
-2. Click "Add Integration" 
-3. Search for "Lionel Train Controller"
-4. Enter your locomotive's Bluetooth MAC address
-5. Optionally customize the name and service UUID
-6. Click Submit
+## Setup
 
-### Finding Your Train's MAC Address
+Power the locomotive on and place it within range of a Bluetooth adapter or proxy first —
+it only advertises while powered.
 
-You can find your locomotive's MAC address by:
-1. Using a Bluetooth scanner app on your phone
-2. Looking in Home Assistant Developer Tools → States for bluetooth devices
-3. Using the ESPHome logs if you have the reference implementation
-4. Using Home Assistant's built-in Bluetooth integration to scan for devices
+### Automatic discovery
 
-### Example MAC Address Format
-`FC:1F:C3:9F:A5:4A` (format: XX:XX:XX:XX:XX:XX)
+Home Assistant detects the locomotive by its LionChief service UUID and raises a
+discovery notification. Go to **Settings → Devices & Services**, find the discovered
+Lionel train, and click **Add**.
 
-## Protocol Details
+### Manual setup
 
-This integration implements the complete Lionel LionChief Bluetooth protocol based on multiple reverse-engineering efforts:
+1. Go to **Settings → Devices & Services → Add Integration**.
+2. Search for **Lionel Train Controller**.
+3. Pick your locomotive from the list of detected LionChief devices.
 
-- **Primary Service UUID**: `e20a39f4-73f5-4bc4-a12f-17d1ad07a961` (LionChief control)
-- **Device Info Service**: `0000180a-0000-1000-8000-00805f9b34fb` (standard BLE device information)
-- **Write Characteristic**: `08590f7e-db05-467e-8757-72f6faeb13d4` (LionelCommand)
-- **Notify Characteristic**: `08590f7e-db05-467e-8757-72f6faeb14d3` (LionelData)
+If no locomotive is detected, the flow falls back to a form where you can type the
+Bluetooth address directly (format `FC:1F:C3:9F:A5:4A`). Find the address under
+**Settings → Devices & Services → Bluetooth**, or with a Bluetooth scanner app.
 
-### Enhanced Command Structure
+## Entities
 
-The integration now uses the proper Lionel command format:
-- **Byte 0**: Always `0x00` (command prefix)
-- **Byte 1**: Command code (e.g., `0x45` for speed, `0x46` for direction)
-- **Byte 2+**: Parameters specific to each command
-- **Last Byte**: Checksum (simplified to `0x00` for compatibility)
+The integration creates one device per locomotive.
 
-### Device Information
+### Controls
 
-The integration automatically reads and displays:
-- Model number
-- Serial number
-- Firmware revision
-- Hardware revision
-- Software revision
-- Manufacturer name
+| Entity | Type | Description |
+| --- | --- | --- |
+| Throttle | number | Speed, 0–100% |
+| Master Volume | number | Overall volume, 0–7 |
+| Horn / Bell / Speech / Engine Volume | number | Per-channel volume, 0–7 |
+| Lights | switch | Locomotive lighting |
+| Horn | switch | Horn sound |
+| Bell | switch | Bell sound |
+| Forward / Reverse | button | Set direction of travel |
+| Stop | button | Set throttle to zero |
+| Reconnect | button | Force a fresh Bluetooth connection |
+| Disconnect | button | Drop the Bluetooth connection |
+| Announcement (×7) | button | Conductor announcements |
 
-This information is displayed in Home Assistant's device registry for better identification.
+### Diagnostics
 
-## Compatibility
+| Entity | Type | Description |
+| --- | --- | --- |
+| Connection | binary_sensor | Whether a Bluetooth connection is open |
+| Status | sensor | Most recent status frame, with decoded attributes |
 
-- Tested with Pennsylvania Flyer locomotive
-- Should work with other LionChief Bluetooth locomotives
-- Requires Home Assistant 2023.8.0 or later
-- Requires Python bleak 0.20.0 or later
+## Services
+
+### `lionel_controller.reload_integration`
+
+Reloads the integration to re-establish the Bluetooth connection.
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `entry_id` | no | Config entry to reload. Omit to reload every locomotive. |
+
+## How connection handling works
+
+The locomotive is only reachable while powered on, so the integration is built around
+that rather than assuming a permanent connection:
+
+- **Setup never fails because the locomotive is off.** The config entry loads and the
+  entities are created regardless.
+- **Entities are available whenever the locomotive is advertising**, not only when a
+  GATT connection is already open. The connection is made lazily on first command.
+- **Connections are established automatically** when the locomotive starts advertising,
+  rate-limited to one attempt per 30 seconds so a constantly-advertising locomotive
+  cannot cause a connect storm.
+- **The Reconnect button is always enabled**, so a stalled connection can be retried
+  even when everything else reports unavailable.
+
+## What this fork fixes
+
+The upstream integration could not be installed or operated. Three defects were
+confirmed by reproducing them against Home Assistant 2026.8.3:
+
+1. **Setup could never complete.** The config flow constructed its own `BleakScanner`
+   and ran a discovery scan. Home Assistant owns the Bluetooth adapter, so this
+   conflicts with its scanner and fails, leaving the flow stuck on `cannot_connect`.
+   It now reads Home Assistant's own scan results via `async_discovered_service_info`.
+
+2. **The first command deadlocked permanently.** `async_send_command` acquired
+   `self._lock` and then awaited `_async_connect`, which acquired the same lock.
+   `asyncio.Lock` is not reentrant, so the coroutine blocked forever and wedged the
+   coordinator for the rest of the Home Assistant run. Locking is now expressed as an
+   explicit contract: public methods acquire the lock, and `_locked` helpers assume it
+   is already held.
+
+3. **Every control was permanently unavailable.** Entity availability was tied to
+   `coordinator.connected`, but the integration only connected while sending a command —
+   which the UI would not let you send, because the entity was unavailable.
+   Availability is now based on whether the locomotive is reachable.
+
+Also fixed:
+
+- `manifest.json` used the invalid key `bluetooth_discovery`, was missing the required
+  `bluetooth_adapters` dependency, and declared `bleak>=0.20.0`, risking an upgrade that
+  would break Home Assistant's Bluetooth stack. The manifest now passes `hassfest`.
+- The Bluetooth matcher also matched the generic Device Information service
+  (`0000180a-…`), which nearly every BLE device advertises, so unrelated devices
+  triggered discovery flows. Discovery now matches only the LionChief service.
+- `async_step_bluetooth` claimed a device's unique ID *before* checking whether it was
+  a LionChief, so unrelated devices were bound to this integration.
+- Setup logged "Successfully connected" even when the connection had failed.
+- Entities registered their state-write callback in `__init__`, which can fire before
+  the entity is added to Home Assistant.
+- The `reload_integration` service closed over the first config entry, so with more than
+  one locomotive it always reloaded the wrong one; it was also never removed on unload.
+- `hacs.json` contained the invalid keys `domains` and `iot_class`.
+
+## Protocol
+
+- **Control service**: `e20a39f4-73f5-4bc4-a12f-17d1ad07a961`
+- **Write characteristic**: `08590f7e-db05-467e-8757-72f6faeb13d4` (LionelCommand)
+- **Notify characteristic**: `08590f7e-db05-467e-8757-72f6faeb14d3` (LionelData)
+
+Command frames are `[0x00, command, *parameters]`. Throttle is encoded as `0x00`–`0x1F`
+rather than a percentage. Status notifications arrive as
+`[0x00, 0x81, 0x02, speed, direction, 0x03, 0x0C, flags]`, where `flags` bit 2 is the
+lights and bit 1 is the bell.
 
 ## Troubleshooting
 
-### Connection Issues
-- Ensure locomotive is powered on and in Bluetooth pairing mode
-- Check that locomotive is within Bluetooth range (typically 10-30 feet)
-- Verify MAC address is correct
-- Try restarting Home Assistant if connection issues persist
+**The locomotive is not discovered.** It only advertises while powered on. Confirm it
+appears under **Settings → Devices & Services → Bluetooth**. If Home Assistant runs in a
+container or VM, make sure a Bluetooth adapter is passed through, or add an ESPHome
+Bluetooth proxy.
 
-### Improved Connection Reliability
-The integration uses `bleak-retry-connector` for enhanced connection stability:
-- **Automatic Retries**: Failed connections are automatically retried up to 3 times
-- **Exponential Backoff**: Increasing delays between retry attempts to avoid overwhelming the device
-- **Service Caching**: Bluetooth service information is cached for faster subsequent connections
-- **Better Error Handling**: More informative error messages for connection troubleshooting
+**Entities are unavailable.** The locomotive is out of range or switched off. They
+recover automatically once it advertises again.
 
-### Service UUID Issues
-Different locomotive models may use different service UUIDs. If the default doesn't work:
-1. Use a Bluetooth scanner to find your locomotive's service UUID
-2. Reconfigure the integration with the correct UUID
+**Commands are not getting through.** Press **Reconnect**. LionChief locomotives accept
+only one Bluetooth connection at a time, so close the Lionel phone app first.
+
+To capture detail for a bug report, add this to `configuration.yaml` and restart:
+
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.lionel_controller: debug
+```
+
+## Development
+
+```bash
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements_test.txt
+pytest
+```
+
+The test suite runs the integration inside a real Home Assistant instance and covers
+the three regressions above. To validate the manifest the way Home Assistant's CI does:
+
+```bash
+python -m script.hassfest --integration-path /path/to/custom_components/lionel_controller
+```
 
 ## Credits
 
 - Protocol reverse engineering by [Property404](https://github.com/Property404/lionchief-controller)
+- Original integration by [@iamjoshk](https://github.com/iamjoshk/lionel_controller)
 - ESPHome reference implementation by [@iamjoshk](https://github.com/iamjoshk/home-assistant-collection/tree/main/ESPHome/LionelController)
-- Additional protocol details from [pedasmith's BluetoothDeviceController](https://github.com/pedasmith/BluetoothDeviceController/blob/main/BluetoothProtocolsDevices/Lionel_LionChief.cs)
+- Additional protocol detail from [pedasmith's BluetoothDeviceController](https://github.com/pedasmith/BluetoothDeviceController/blob/main/BluetoothProtocolsDevices/Lionel_LionChief.cs)
+
+[hacs-shield]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg
+[hacs-url]: https://github.com/hacs/integration

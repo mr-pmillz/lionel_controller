@@ -1,10 +1,7 @@
 reload_integration:
-  name: Reload Integration
-  description: Reload the Lionel Train Controller integration for better reconnection.
   fields:
     entry_id:
-      name: Entry ID
-      description: The config entry ID to reload (optional - uses current integration if not provided).
       required: false
+      example: 01J8Z9QK3M4N5P6R7S8T9V0W1X
       selector:
         text:
