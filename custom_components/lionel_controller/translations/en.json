@@ -1,28 +1,46 @@
 {
   "config": {
+    "flow_title": "{name}",
     "step": {
       "user": {
         "title": "Lionel Train Controller",
-        "description": "Set up your Lionel LionChief locomotive",
+        "description": "Select the LionChief locomotive to add. Make sure it is powered on and in range of a Bluetooth adapter.",
         "data": {
-          "mac_address": "Bluetooth MAC address",
+          "address": "Locomotive"
+        }
+      },
+      "manual": {
+        "title": "Enter locomotive details",
+        "description": "No LionChief locomotive was detected. Power it on and wait a moment, or enter its Bluetooth address manually.",
+        "data": {
+          "mac_address": "Bluetooth address",
           "name": "Name",
           "service_uuid": "Service UUID"
         }
       },
       "bluetooth_confirm": {
-        "title": "Confirm Lionel Train Discovery",
-        "description": "Discovered Lionel train: **{name}** at address `{address}`. Do you want to add it to Home Assistant?"
+        "title": "Confirm Lionel train discovery",
+        "description": "Discovered Lionel train **{name}** at address `{address}`. Do you want to add it to Home Assistant?"
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to the train. Make sure it's powered on and in range.",
-      "invalid_mac": "Invalid MAC address format",
-      "unknown": "Unexpected error occurred"
+      "invalid_mac": "Invalid Bluetooth address. Use the format AA:BB:CC:DD:EE:FF."
     },
     "abort": {
-      "already_configured": "Device is already configured",
+      "already_configured": "This locomotive is already configured",
       "not_lionel_device": "This device is not a Lionel LionChief locomotive"
+    }
+  },
+  "services": {
+    "reload_integration": {
+      "name": "Reload integration",
+      "description": "Reloads Lionel Train Controller config entries to re-establish the Bluetooth connection.",
+      "fields": {
+        "entry_id": {
+          "name": "Entry ID",
+          "description": "The config entry to reload. Leave empty to reload every Lionel locomotive."
+        }
+      }
     }
   }
 }

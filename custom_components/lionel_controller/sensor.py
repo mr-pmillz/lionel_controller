@@ -1,75 +1,53 @@
-"""Sensor platform for Lionel Train Controller integration."""
+"""Sensor platform for the Lionel Train Controller integration."""
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import LionelTrainCoordinator
-from .const import DOMAIN
+from . import LionelConfigEntry
+from .entity import LionelTrainEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+NO_DATA = "No data"
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    config_entry: LionelConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the Lionel Train sensor platform."""
-    coordinator: LionelTrainCoordinator = hass.data[DOMAIN][config_entry.entry_id]
-    name = config_entry.data[CONF_NAME]
-    
-    async_add_entities([LionelTrainStatusSensor(coordinator, name)], True)
+    async_add_entities([LionelTrainStatusSensor(config_entry.runtime_data)])
 
 
-class LionelTrainStatusSensor(SensorEntity):
-    """Sensor for Lionel Train status information."""
+class LionelTrainStatusSensor(LionelTrainEntity, SensorEntity):
+    """Sensor exposing the most recent status frame from the locomotive."""
 
-    _attr_has_entity_name = True
     _attr_name = "Status"
     _attr_icon = "mdi:train"
 
-    def __init__(self, coordinator: LionelTrainCoordinator, device_name: str) -> None:
+    def __init__(self, coordinator) -> None:
         """Initialize the sensor."""
-        self._coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.mac_address}_status"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.mac_address)},
-            "name": device_name,
-            **coordinator.device_info,
-        }
-        # Register for state updates
-        self._coordinator.add_update_callback(self.async_write_ha_state)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Entity being removed from hass."""
-        self._coordinator.remove_update_callback(self.async_write_ha_state)
+        super().__init__(coordinator, "status")
 
     @property
-    def native_value(self) -> str | None:
-        """Return the state of the sensor."""
-        hex_value = self._coordinator.last_notification_hex
-        if hex_value is None:
-            return "No data"
-        return hex_value
+    def native_value(self) -> str:
+        """Return the last notification payload as hex."""
+        return self._coordinator.last_notification_hex or NO_DATA
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._coordinator.connected
-
-    @property
-    def extra_state_attributes(self) -> dict[str, any]:
-        """Return additional state attributes."""
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the decoded locomotive state."""
         return {
             "speed": self._coordinator.speed,
             "direction_forward": self._coordinator.direction_forward,
             "lights_on": self._coordinator.lights_on,
             "bell_on": self._coordinator.bell_on,
             "horn_on": self._coordinator.horn_on,
+            "connected": self._coordinator.connected,
         }

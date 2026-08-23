@@ -1,145 +1,120 @@
-"""Button platform for Lionel Train Controller integration."""
+"""Button platform for the Lionel Train Controller integration."""
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
-from homeassistant.components.button import ButtonEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
+from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import LionelTrainCoordinator
-from .const import ANNOUNCEMENTS, DOMAIN
+from . import LionelConfigEntry
+from .const import ANNOUNCEMENTS
+from .coordinator import LionelTrainCoordinator
+from .entity import LionelTrainEntity
 
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, kw_only=True)
+class LionelButtonDescription(ButtonEntityDescription):
+    """Describes a Lionel button entity."""
+
+    press_fn: Callable[[LionelTrainCoordinator], Awaitable[bool]]
+    # Stays pressable even when the locomotive looks unreachable, so a stalled
+    # connection can always be retried from the UI.
+    always_available: bool = False
+
+
+BUTTON_DESCRIPTIONS: tuple[LionelButtonDescription, ...] = (
+    LionelButtonDescription(
+        key="stop",
+        name="Stop",
+        icon="mdi:stop",
+        press_fn=lambda coordinator: coordinator.async_set_speed(0),
+    ),
+    LionelButtonDescription(
+        key="forward",
+        name="Forward",
+        icon="mdi:arrow-right",
+        press_fn=lambda coordinator: coordinator.async_set_direction(True),
+    ),
+    LionelButtonDescription(
+        key="reverse",
+        name="Reverse",
+        icon="mdi:arrow-left",
+        press_fn=lambda coordinator: coordinator.async_set_direction(False),
+    ),
+    LionelButtonDescription(
+        key="reconnect",
+        name="Reconnect",
+        icon="mdi:bluetooth-connect",
+        press_fn=lambda coordinator: coordinator.async_force_reconnect(),
+        always_available=True,
+    ),
+    LionelButtonDescription(
+        key="disconnect",
+        name="Disconnect",
+        icon="mdi:bluetooth-off",
+        press_fn=lambda coordinator: coordinator.async_disconnect(),
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    config_entry: LionelConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the Lionel Train button platform."""
-    coordinator: LionelTrainCoordinator = hass.data[DOMAIN][config_entry.entry_id]
-    name = config_entry.data[CONF_NAME]
-    
-    buttons = [
-        LionelTrainDisconnectButton(coordinator, name),
-        LionelTrainStopButton(coordinator, name),
-        LionelTrainForwardButton(coordinator, name),
-        LionelTrainReverseButton(coordinator, name),
+    coordinator = config_entry.runtime_data
+
+    buttons: list[ButtonEntity] = [
+        LionelTrainButton(coordinator, description)
+        for description in BUTTON_DESCRIPTIONS
     ]
-    
-    # Add announcement buttons
-    for announcement_name in ANNOUNCEMENTS:
-        buttons.append(
-            LionelTrainAnnouncementButton(coordinator, name, announcement_name)
+    buttons.extend(
+        LionelTrainButton(
+            coordinator,
+            LionelButtonDescription(
+                key=f"announcement_{label.lower().replace(' ', '_')}",
+                name=f"Announcement {label}",
+                icon="mdi:bullhorn-variant",
+                press_fn=(
+                    lambda coordinator, _code=details["code"]: (
+                        coordinator.async_play_announcement(_code)
+                    )
+                ),
+            ),
         )
-    
-    async_add_entities(buttons, True)
+        for label, details in ANNOUNCEMENTS.items()
+    )
+
+    async_add_entities(buttons)
 
 
-class LionelTrainButtonBase(ButtonEntity):
-    """Base class for Lionel Train buttons."""
+class LionelTrainButton(LionelTrainEntity, ButtonEntity):
+    """A one-shot control on the locomotive."""
 
-    _attr_has_entity_name = True
+    entity_description: LionelButtonDescription
 
-    def __init__(self, coordinator: LionelTrainCoordinator, device_name: str) -> None:
+    def __init__(
+        self,
+        coordinator: LionelTrainCoordinator,
+        description: LionelButtonDescription,
+    ) -> None:
         """Initialize the button."""
-        self._coordinator = coordinator
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.mac_address)},
-            "name": device_name,
-            **coordinator.device_info,
-        }
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._coordinator.connected
-
-
-class LionelTrainDisconnectButton(LionelTrainButtonBase):
-    """Button for disconnecting from the train."""
-
-    _attr_name = "Disconnect"
-    _attr_icon = "mdi:bluetooth-off"
-
-    def __init__(self, coordinator: LionelTrainCoordinator, device_name: str) -> None:
-        """Initialize the disconnect button."""
-        super().__init__(coordinator, device_name)
-        self._attr_unique_id = f"{coordinator.mac_address}_disconnect"
+        """Return True if the button can be pressed."""
+        if self.entity_description.always_available:
+            return True
+        return super().available
 
     async def async_press(self) -> None:
-        """Press the button."""
-        await self._coordinator.async_disconnect()
-
-
-class LionelTrainStopButton(LionelTrainButtonBase):
-    """Button for stopping the train."""
-
-    _attr_name = "Stop"
-    _attr_icon = "mdi:stop"
-
-    def __init__(self, coordinator: LionelTrainCoordinator, device_name: str) -> None:
-        """Initialize the stop button."""
-        super().__init__(coordinator, device_name)
-        self._attr_unique_id = f"{coordinator.mac_address}_stop"
-
-    async def async_press(self) -> None:
-        """Press the button."""
-        await self._coordinator.async_set_speed(0)
-
-
-class LionelTrainForwardButton(LionelTrainButtonBase):
-    """Button for setting forward direction."""
-
-    _attr_name = "Forward"
-    _attr_icon = "mdi:arrow-right"
-
-    def __init__(self, coordinator: LionelTrainCoordinator, device_name: str) -> None:
-        """Initialize the forward button."""
-        super().__init__(coordinator, device_name)
-        self._attr_unique_id = f"{coordinator.mac_address}_forward"
-
-    async def async_press(self) -> None:
-        """Press the button."""
-        await self._coordinator.async_set_direction(True)
-
-
-class LionelTrainReverseButton(LionelTrainButtonBase):
-    """Button for setting reverse direction."""
-
-    _attr_name = "Reverse"
-    _attr_icon = "mdi:arrow-left"
-
-    def __init__(self, coordinator: LionelTrainCoordinator, device_name: str) -> None:
-        """Initialize the reverse button."""
-        super().__init__(coordinator, device_name)
-        self._attr_unique_id = f"{coordinator.mac_address}_reverse"
-
-    async def async_press(self) -> None:
-        """Press the button."""
-        await self._coordinator.async_set_direction(False)
-
-
-class LionelTrainAnnouncementButton(LionelTrainButtonBase):
-    """Button for playing announcements."""
-
-    _attr_icon = "mdi:bullhorn-variant"
-
-    def __init__(
-        self, coordinator: LionelTrainCoordinator, device_name: str, announcement_name: str
-    ) -> None:
-        """Initialize the announcement button."""
-        super().__init__(coordinator, device_name)
-        self._announcement_name = announcement_name
-        self._attr_name = f"Announcement {announcement_name}"
-        self._attr_unique_id = f"{coordinator.mac_address}_announcement_{announcement_name.lower().replace(' ', '_')}"
-
-    async def async_press(self) -> None:
-        """Press the button."""
-        announcement_config = ANNOUNCEMENTS[self._announcement_name]
-        announcement_code = announcement_config["code"]
-        await self._coordinator.async_play_announcement(announcement_code)
+        """Handle the button press."""
+        await self.entity_description.press_fn(self._coordinator)

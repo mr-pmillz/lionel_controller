@@ -1,268 +1,126 @@
-"""Number platform for Lionel Train Controller integration."""
+"""Number platform for the Lionel Train Controller integration."""
 from __future__ import annotations
 
 import logging
-from typing import Any
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
-from homeassistant.components.number import NumberEntity, NumberMode
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
+from homeassistant.components.number import (
+    NumberEntity,
+    NumberEntityDescription,
+    NumberMode,
+)
+from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import LionelTrainCoordinator
-from .const import DOMAIN
+from . import LionelConfigEntry
+from .const import (
+    SOUND_SOURCE_BELL,
+    SOUND_SOURCE_ENGINE,
+    SOUND_SOURCE_HORN,
+    SOUND_SOURCE_SPEECH,
+    VOLUME_MAX,
+    VOLUME_MIN,
+)
+from .coordinator import LionelTrainCoordinator
+from .entity import LionelTrainEntity
 
 _LOGGER = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, kw_only=True)
+class LionelNumberDescription(NumberEntityDescription):
+    """Describes a Lionel number entity."""
+
+    value_fn: Callable[[LionelTrainCoordinator], int]
+    set_fn: Callable[[LionelTrainCoordinator, int], Awaitable[bool]]
+
+
+def _volume_description(
+    key: str, name: str, icon: str, source: int
+) -> LionelNumberDescription:
+    """Build a description for one sound source's volume control."""
+    return LionelNumberDescription(
+        key=key,
+        name=name,
+        icon=icon,
+        native_min_value=VOLUME_MIN,
+        native_max_value=VOLUME_MAX,
+        native_step=1,
+        mode=NumberMode.SLIDER,
+        value_fn=lambda coordinator, _key=key: getattr(coordinator, _key),
+        set_fn=lambda coordinator, value, _source=source: (
+            coordinator.async_set_sound_volume(_source, value)
+        ),
+    )
+
+
+NUMBER_DESCRIPTIONS: tuple[LionelNumberDescription, ...] = (
+    LionelNumberDescription(
+        key="throttle",
+        name="Throttle",
+        icon="mdi:train",
+        native_min_value=0,
+        native_max_value=100,
+        native_step=1,
+        native_unit_of_measurement=PERCENTAGE,
+        mode=NumberMode.SLIDER,
+        value_fn=lambda coordinator: coordinator.speed,
+        set_fn=lambda coordinator, value: coordinator.async_set_speed(value),
+    ),
+    LionelNumberDescription(
+        key="master_volume",
+        name="Master Volume",
+        icon="mdi:volume-high",
+        native_min_value=VOLUME_MIN,
+        native_max_value=VOLUME_MAX,
+        native_step=1,
+        mode=NumberMode.SLIDER,
+        value_fn=lambda coordinator: coordinator.master_volume,
+        set_fn=lambda coordinator, value: coordinator.async_set_master_volume(value),
+    ),
+    _volume_description("horn_volume", "Horn Volume", "mdi:bullhorn", SOUND_SOURCE_HORN),
+    _volume_description("bell_volume", "Bell Volume", "mdi:bell", SOUND_SOURCE_BELL),
+    _volume_description(
+        "speech_volume", "Speech Volume", "mdi:account-voice", SOUND_SOURCE_SPEECH
+    ),
+    _volume_description("engine_volume", "Engine Volume", "mdi:train", SOUND_SOURCE_ENGINE),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    config_entry: LionelConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the Lionel Train number platform."""
-    coordinator: LionelTrainCoordinator = hass.data[DOMAIN][config_entry.entry_id]
-    name = config_entry.data[CONF_NAME]
-    
-    async_add_entities([
-        LionelTrainThrottle(coordinator, name),
-        LionelTrainMasterVolume(coordinator, name),
-        LionelTrainHornVolume(coordinator, name),
-        LionelTrainBellVolume(coordinator, name),
-        LionelTrainSpeechVolume(coordinator, name),
-        LionelTrainEngineVolume(coordinator, name),
-    ], True)
+    coordinator = config_entry.runtime_data
+    async_add_entities(
+        LionelTrainNumber(coordinator, description)
+        for description in NUMBER_DESCRIPTIONS
+    )
 
 
-class LionelTrainThrottle(NumberEntity):
-    """Representation of a Lionel Train throttle as a number entity."""
+class LionelTrainNumber(LionelTrainEntity, NumberEntity):
+    """A numeric control on the locomotive."""
 
-    _attr_has_entity_name = True
-    _attr_name = "Throttle"
-    _attr_icon = "mdi:train"
-    _attr_mode = NumberMode.SLIDER
-    _attr_native_min_value = 0
-    _attr_native_max_value = 100
-    _attr_native_step = 1
-    _attr_native_unit_of_measurement = "%"
+    entity_description: LionelNumberDescription
 
-    def __init__(self, coordinator: LionelTrainCoordinator, name: str) -> None:
+    def __init__(
+        self,
+        coordinator: LionelTrainCoordinator,
+        description: LionelNumberDescription,
+    ) -> None:
         """Initialize the number entity."""
-        self._coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.mac_address}_throttle"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.mac_address)},
-            "name": name,
-            **coordinator.device_info,
-        }
-        # Register for state updates
-        self._coordinator.add_update_callback(self.async_write_ha_state)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Entity being removed from hass."""
-        self._coordinator.remove_update_callback(self.async_write_ha_state)
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._coordinator.connected
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current throttle value."""
-        return self._coordinator.speed
+    def native_value(self) -> float:
+        """Return the current value."""
+        return self.entity_description.value_fn(self._coordinator)
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set the throttle value."""
-        await self._coordinator.async_set_speed(int(value))
-        self.async_write_ha_state()
-
-
-class LionelTrainMasterVolume(NumberEntity):
-    """Representation of master volume control."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Master Volume"
-    _attr_icon = "mdi:volume-high"
-    _attr_mode = NumberMode.SLIDER
-    _attr_native_min_value = 0
-    _attr_native_max_value = 7
-    _attr_native_step = 1
-
-    def __init__(self, coordinator: LionelTrainCoordinator, name: str) -> None:
-        """Initialize the number entity."""
-        self._coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.mac_address}_master_volume"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.mac_address)},
-            "name": name,
-            **coordinator.device_info,
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._coordinator.connected
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current master volume."""
-        return self._coordinator.master_volume
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Set the master volume."""
-        await self._coordinator.async_set_master_volume(int(value))
-        self.async_write_ha_state()
-
-
-class LionelTrainHornVolume(NumberEntity):
-    """Representation of horn volume control."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Horn Volume"
-    _attr_icon = "mdi:bullhorn"
-    _attr_mode = NumberMode.SLIDER
-    _attr_native_min_value = 0
-    _attr_native_max_value = 7
-    _attr_native_step = 1
-
-    def __init__(self, coordinator: LionelTrainCoordinator, name: str) -> None:
-        """Initialize the number entity."""
-        self._coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.mac_address}_horn_volume"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.mac_address)},
-            "name": name,
-            **coordinator.device_info,
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._coordinator.connected
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current horn volume."""
-        return self._coordinator.horn_volume
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Set the horn volume."""
-        from .const import SOUND_SOURCE_HORN
-        await self._coordinator.async_set_sound_volume(SOUND_SOURCE_HORN, int(value))
-        self.async_write_ha_state()
-
-
-class LionelTrainBellVolume(NumberEntity):
-    """Representation of bell volume control."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Bell Volume"
-    _attr_icon = "mdi:bell"
-    _attr_mode = NumberMode.SLIDER
-    _attr_native_min_value = 0
-    _attr_native_max_value = 7
-    _attr_native_step = 1
-
-    def __init__(self, coordinator: LionelTrainCoordinator, name: str) -> None:
-        """Initialize the number entity."""
-        self._coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.mac_address}_bell_volume"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.mac_address)},
-            "name": name,
-            **coordinator.device_info,
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._coordinator.connected
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current bell volume."""
-        return self._coordinator.bell_volume
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Set the bell volume."""
-        from .const import SOUND_SOURCE_BELL
-        await self._coordinator.async_set_sound_volume(SOUND_SOURCE_BELL, int(value))
-        self.async_write_ha_state()
-
-
-class LionelTrainSpeechVolume(NumberEntity):
-    """Representation of speech volume control."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Speech Volume"
-    _attr_icon = "mdi:account-voice"
-    _attr_mode = NumberMode.SLIDER
-    _attr_native_min_value = 0
-    _attr_native_max_value = 7
-    _attr_native_step = 1
-
-    def __init__(self, coordinator: LionelTrainCoordinator, name: str) -> None:
-        """Initialize the number entity."""
-        self._coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.mac_address}_speech_volume"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.mac_address)},
-            "name": name,
-            **coordinator.device_info,
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._coordinator.connected
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current speech volume."""
-        return self._coordinator.speech_volume
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Set the speech volume."""
-        from .const import SOUND_SOURCE_SPEECH
-        await self._coordinator.async_set_sound_volume(SOUND_SOURCE_SPEECH, int(value))
-        self.async_write_ha_state()
-
-
-class LionelTrainEngineVolume(NumberEntity):
-    """Representation of engine volume control."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Engine Volume"
-    _attr_icon = "mdi:train"
-    _attr_mode = NumberMode.SLIDER
-    _attr_native_min_value = 0
-    _attr_native_max_value = 7
-    _attr_native_step = 1
-
-    def __init__(self, coordinator: LionelTrainCoordinator, name: str) -> None:
-        """Initialize the number entity."""
-        self._coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.mac_address}_engine_volume"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.mac_address)},
-            "name": name,
-            **coordinator.device_info,
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._coordinator.connected
-
-    @property
-    def native_value(self) -> float | None:
-        """Return the current engine volume."""
-        return self._coordinator.engine_volume
-
-    async def async_set_native_value(self, value: float) -> None:
-        """Set the engine volume."""
-        from .const import SOUND_SOURCE_ENGINE
-        await self._coordinator.async_set_sound_volume(SOUND_SOURCE_ENGINE, int(value))
-        self.async_write_ha_state()
+        """Send the new value to the locomotive."""
+        await self.entity_description.set_fn(self._coordinator, int(value))

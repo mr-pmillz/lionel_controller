@@ -57,3 +57,5 @@ Thumbs.db
 
 # Temporary files
 /tmp/
+# Linter caches
+.ruff_cache/
