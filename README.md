@@ -84,6 +84,28 @@ The integration creates one device per locomotive.
 | Connection | binary_sensor | Whether a Bluetooth connection is open |
 | Status | sensor | Most recent status frame, with decoded attributes |
 
+## Dashboard
+
+A ready-made dashboard view lives in [`dashboard/train-card.yaml`](dashboard/train-card.yaml):
+status pills, speed presets, direction, bell/horn/lights, and the announcement
+buttons.
+
+It uses only Home Assistant's built-in cards — no custom card, HACS frontend
+plugin, or `card_mod` styling. The blue-on-dark appearance comes from the default
+dark theme.
+
+To install it:
+
+1. Check your entity IDs under **Developer Tools → States**. They come from the
+   device name, so a locomotive named "Christmas Train" yields
+   `switch.christmas_train_lights` and so on.
+2. If your prefix differs, find and replace `christmas_train` in the file.
+3. Open your dashboard, choose **Edit → ⋮ → Raw configuration editor**, and paste
+   the block under `views:`.
+
+The Slow / Medium / High presets set the throttle to 30, 60, and 100 percent.
+Adjust those values in the YAML to suit your locomotive.
+
 ## Services
 
 ### `lionel_controller.reload_integration`
