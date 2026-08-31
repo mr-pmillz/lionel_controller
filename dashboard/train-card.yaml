@@ -1,0 +1,311 @@
+# Lionel Train Controller - dashboard view
+#
+# Built entirely from Home Assistant's built-in cards. No HACS frontend
+# plugin or custom card is required.
+#
+# HOW TO USE
+#   1. Confirm your entity IDs: Developer Tools -> States, filter on your
+#      locomotive's name. They are derived from the device name, so a device
+#      called "Christmas Train" produces switch.christmas_train_lights, etc.
+#   2. If your prefix differs, find/replace "christmas_train" below.
+#   3. Dashboard -> Edit -> three-dot menu -> Raw configuration editor, then
+#      paste this block under "views:".
+#
+# The blue-on-dark look comes from Home Assistant's default dark theme; no
+# theme or card_mod styling is needed.
+
+type: sections
+title: Christmas Train
+path: christmas-train
+icon: mdi:train
+max_columns: 1
+
+# Status pills across the top of the view.
+badges:
+  - type: entity
+    entity: binary_sensor.christmas_train_connection
+    name: Train
+    show_state: true
+    show_name: true
+    state_content: state
+
+  # Optional: if a smart plug powers your track, add it here.
+  # - type: entity
+  #   entity: switch.track_power
+  #   name: Track
+  #   icon: mdi:train-track
+  #   show_state: true
+  #   show_name: true
+
+sections:
+  # ------------------------------------------------------------------
+  # Controls
+  # ------------------------------------------------------------------
+  - type: grid
+    cards:
+      - type: heading
+        heading: Controls
+        heading_style: title
+        icon: mdi:arrow-all
+        badges:
+          - type: button
+            icon: mdi:bluetooth-connect
+            text: Reconnect
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_reconnect
+          - type: button
+            icon: mdi:bluetooth-off
+            text: Disconnect
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_disconnect
+
+      # Speed presets. Stop is a real button entity; Slow/Medium/High set the
+      # throttle number directly, so adjust the values to taste.
+      - type: grid
+        columns: 4
+        square: false
+        cards:
+          - type: button
+            name: Stop
+            icon: mdi:stop-circle
+            show_state: false
+            entity: button.christmas_train_stop
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_stop
+
+          - type: button
+            name: Slow
+            icon: mdi:speedometer-slow
+            entity: number.christmas_train_throttle
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: number.set_value
+              target:
+                entity_id: number.christmas_train_throttle
+              data:
+                value: 30
+
+          - type: button
+            name: Medium
+            icon: mdi:speedometer-medium
+            entity: number.christmas_train_throttle
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: number.set_value
+              target:
+                entity_id: number.christmas_train_throttle
+              data:
+                value: 60
+
+          - type: button
+            name: High
+            icon: mdi:speedometer
+            entity: number.christmas_train_throttle
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: number.set_value
+              target:
+                entity_id: number.christmas_train_throttle
+              data:
+                value: 100
+
+      # Direction
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: button
+            name: Reverse
+            icon: mdi:arrow-left-bold
+            icon_height: 56px
+            entity: button.christmas_train_reverse
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_reverse
+
+          - type: button
+            name: Forward
+            icon: mdi:arrow-right-bold
+            icon_height: 56px
+            entity: button.christmas_train_forward
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_forward
+
+      # Fine throttle control, in addition to the presets above.
+      - type: tile
+        entity: number.christmas_train_throttle
+        name: Throttle
+        features:
+          - type: numeric-input
+            style: slider
+
+  # ------------------------------------------------------------------
+  # Features
+  # ------------------------------------------------------------------
+  - type: grid
+    cards:
+      - type: heading
+        heading: Features
+        heading_style: title
+        icon: mdi:star-box
+
+      - type: grid
+        columns: 3
+        square: false
+        cards:
+          - type: button
+            entity: switch.christmas_train_bell
+            name: Bell
+            icon: mdi:bell
+            show_state: true
+            tap_action:
+              action: toggle
+
+          - type: button
+            entity: switch.christmas_train_horn
+            name: Horn
+            icon: mdi:bugle
+            show_state: true
+            tap_action:
+              action: toggle
+
+          - type: button
+            entity: switch.christmas_train_lights
+            name: Lights
+            icon: mdi:car-light-high
+            show_state: true
+            tap_action:
+              action: toggle
+
+  # ------------------------------------------------------------------
+  # Announcements
+  # ------------------------------------------------------------------
+  - type: grid
+    cards:
+      - type: heading
+        heading: Announcements
+        heading_style: title
+        icon: mdi:bullhorn
+
+      - type: grid
+        columns: 4
+        square: false
+        cards:
+          - type: button
+            name: Fastest Freight
+            icon: mdi:bullhorn-outline
+            entity: button.christmas_train_announcement_fastest_freight
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_announcement_fastest_freight
+
+          - type: button
+            name: Hey There
+            icon: mdi:bullhorn-outline
+            entity: button.christmas_train_announcement_hey_there
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_announcement_hey_there
+
+          - type: button
+            name: Penna Flyer
+            icon: mdi:bullhorn-outline
+            entity: button.christmas_train_announcement_penna_flyer
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_announcement_penna_flyer
+
+          - type: button
+            name: Ready to Roll
+            icon: mdi:bullhorn-outline
+            entity: button.christmas_train_announcement_ready_to_roll
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_announcement_ready_to_roll
+
+          - type: button
+            name: Squeaky
+            icon: mdi:bullhorn-outline
+            entity: button.christmas_train_announcement_squeaky
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_announcement_squeaky
+
+          - type: button
+            name: Water and Fire
+            icon: mdi:bullhorn-outline
+            entity: button.christmas_train_announcement_water_and_fire
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_announcement_water_and_fire
+
+          - type: button
+            name: Random
+            icon: mdi:bullhorn-outline
+            entity: button.christmas_train_announcement_random
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.christmas_train_announcement_random
+
+  # ------------------------------------------------------------------
+  # Sound levels (collapsed by default to keep the view tidy)
+  # ------------------------------------------------------------------
+  - type: grid
+    cards:
+      - type: heading
+        heading: Sound
+        heading_style: subtitle
+        icon: mdi:volume-high
+
+      - type: entities
+        entities:
+          - entity: number.christmas_train_master_volume
+            name: Master
+          - entity: number.christmas_train_horn_volume
+            name: Horn
+          - entity: number.christmas_train_bell_volume
+            name: Bell
+          - entity: number.christmas_train_speech_volume
+            name: Speech
+          - entity: number.christmas_train_engine_volume
+            name: Engine
